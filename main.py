@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import supervision as sv
 from ultralytics import YOLO
 from tqdm import tqdm
@@ -27,6 +28,10 @@ counted_out_ids = set()
 in_count = 0
 out_count = 0
 
+# heatmap accumulator: one float value per pixel, builds up over the whole video
+heatmap_accum = np.zeros((H, W), dtype=np.float32)
+last_frame = None
+
 with sv.VideoSink(target_path=OUTPUT_PATH, video_info=video_info) as sink:
     frame_generator = sv.get_video_frames_generator(VIDEO_PATH)
 
@@ -42,6 +47,9 @@ with sv.VideoSink(target_path=OUTPUT_PATH, video_info=video_info) as sink:
             for xyxy, tracker_id in zip(detections.xyxy, detections.tracker_id):
                 x1, y1, x2, y2 = xyxy
                 cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
+
+                # add this person's center point to the heatmap accumulator
+                cv2.circle(heatmap_accum, (cx, cy), radius=18, color=1, thickness=-1)
 
                 if tracker_id in track_history:
                     prev_cx, prev_cy = track_history[tracker_id]
@@ -74,6 +82,20 @@ with sv.VideoSink(target_path=OUTPUT_PATH, video_info=video_info) as sink:
         cv2.putText(annotated, f"OUT: {out_count}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
         sink.write_frame(frame=annotated)
+        last_frame = frame
 
 print(f"Final -> IN: {in_count} | OUT: {out_count}")
 print(f"Saved: {OUTPUT_PATH}")
+
+# ---- build the final heatmap ----
+heatmap_blurred = cv2.GaussianBlur(heatmap_accum, (0, 0), sigmaX=15, sigmaY=15)
+heatmap_norm = cv2.normalize(heatmap_blurred, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
+
+cv2.imwrite("output/heatmap_only.png", heatmap_color)
+
+overlay = cv2.addWeighted(last_frame, 0.5, heatmap_color, 0.5, 0)
+cv2.imwrite("output/heatmap_overlay.png", overlay)
+
+print("Saved: output/heatmap_only.png")
+print("Saved: output/heatmap_overlay.png")
