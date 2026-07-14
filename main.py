@@ -1,28 +1,34 @@
 import cv2
+import supervision as sv
 from ultralytics import YOLO
+from tqdm import tqdm
 
 VIDEO_PATH = "data/people-walking.mp4"
+OUTPUT_PATH = "output/tracked_output.mp4"
+PERSON_CLASS_ID = 0  # COCO class id for "person"
 
-# Load YOLO model (auto-downloads yolov8n.pt on first run)
-model = YOLO("yolov8n.pt")
+model = YOLO("yolov8s.pt")
+tracker = sv.ByteTrack()
 
-cap = cv2.VideoCapture(VIDEO_PATH)
-ret, frame = cap.read()   # read only the first frame
-cap.release()
+box_annotator = sv.BoxAnnotator(thickness=2)
+label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
 
-if not ret:
-    print("Error: could not read frame.")
-else:
-    results = model(frame)[0]
+video_info = sv.VideoInfo.from_video_path(VIDEO_PATH)
+print(video_info)
 
-    # print detected objects and their confidence scores
-    for box in results.boxes:
-        class_id = int(box.cls[0])
-        class_name = model.names[class_id]
-        confidence = float(box.conf[0])
-        print(f"Detected: {class_name} | Confidence: {confidence:.2f}")
+with sv.VideoSink(target_path=OUTPUT_PATH, video_info=video_info) as sink:
+    frame_generator = sv.get_video_frames_generator(VIDEO_PATH)
 
-    # save the annotated frame as an image for visual check
-    annotated_frame = results.plot()
-    cv2.imwrite("test_frame.jpg", annotated_frame)
-    print("Saved: test_frame.jpg")
+    for frame in tqdm(frame_generator, total=video_info.total_frames, desc="Processing"):
+        result = model(frame, verbose=False)[0]
+        detections = sv.Detections.from_ultralytics(result)
+        detections = detections[detections.class_id == PERSON_CLASS_ID]
+        detections = tracker.update_with_detections(detections)
+
+        labels = [f"ID {tid}" for tid in detections.tracker_id]
+        annotated = box_annotator.annotate(scene=frame.copy(), detections=detections)
+        annotated = label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
+
+        sink.write_frame(frame=annotated)
+
+print(f"Saved: {OUTPUT_PATH}")
