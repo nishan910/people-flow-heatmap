@@ -36,3 +36,11 @@ python main.py
 - `main.py` — full pipeline
 - `output/people_flow_output.mp4` — annotated output video
 - `output/heatmap_only.png`, `output/heatmap_overlay.png` — final heatmap
+
+---
+
+## Project Outputs
+
+You can access the project outputs, processed videos and images in the Google Drive link below:
+
+👉 [Google Drive Link](https://drive.google.com/drive/folders/1sz6MoAr14vHYohwjF4-I8I0aZqoXSSEC?usp=sharing)
